@@ -2,12 +2,15 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <conio.h>
 using namespace std;
 
 #define NEW_MACHINE_ADDED -1
+#define NETWORK_ENABLED -2
+#define NETWORK_DISABLED -3
 
 int currentValue;
-
+bool networkEnabled = true;
 HANDLE  hNamedPipe;
 vector <string> machineNames;
 string currentMachineName = "DESKTOP-CO3NPLJ";
@@ -50,7 +53,6 @@ int broadcast(int value)
 
 int recieveValue(HANDLE hNamedPipe)
 {
-
 	int recievedValue;
 	DWORD dwBytesRead;
 	if (!ReadFile(hNamedPipe,   // дескриптор канала    
@@ -82,14 +84,24 @@ DWORD WINAPI marker(LPVOID args)
 			cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
 		}
 
-		if (recievedValue == NEW_MACHINE_ADDED)
-			broadcast(currentValue);
-		else
+		switch (recievedValue)
 		{
+		case NEW_MACHINE_ADDED:
+			broadcast(currentValue);
+			break;
+		case NETWORK_ENABLED:
+			networkEnabled = true;
+			cout << "Network enabled" << endl;
+			break;
+		case NETWORK_DISABLED:
+			networkEnabled = false;
+			cout << "Network disabled" << endl;
+			break;
+		default:
 			currentValue = recievedValue;
 			cout << "Current value = " << currentValue << endl;
+			break;
 		}
-
 	}
 	return 0;
 }
@@ -111,7 +123,7 @@ int main() {
 	DWORD  dwBytesWritten;  // для числа записанных байтов
 	DWORD  dwBytesRead;  // для числа прочитанных байтов  
 	DWORD threadID;
-						  // инициализация атрибутов защиты  
+	// инициализация атрибутов защиты  
 	sa.nLength = sizeof(sa);
 	sa.bInheritHandle = FALSE; // дескриптор канала ненаследуемый   // инициализируем дескриптор защиты  
 	InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
@@ -136,8 +148,8 @@ int main() {
 		return 0;
 	}
 	cout << "Pipe succesfully created" << endl;
-	
-	
+
+
 
 	if (broadcast(NEW_MACHINE_ADDED) == 0)
 		currentValue = 0;
@@ -162,13 +174,38 @@ int main() {
 		&threadID				// идентификатор потока 
 	);
 
-
+	char command;
 	while (true)
 	{
-		cin.get();
-		currentValue++;
-		cout << "Current value = " << currentValue << endl;
-		broadcast(currentValue);
+		command = _getch();
+		//cin >> command;
+		if (command == 0)
+			continue;
+		switch (command)
+		{
+		case '+':
+			networkEnabled = true;
+			cout << "Network enabled" << endl;
+			broadcast(NETWORK_ENABLED);
+			break;
+		case '-':
+			networkEnabled = false;
+			cout << "Network disabled" << endl;
+			broadcast(NETWORK_DISABLED);
+			break;
+		case ' ':
+			if (networkEnabled) {
+				currentValue++;
+				cout << "Current value = " << currentValue << endl;
+				broadcast(currentValue);
+			}
+			else
+				cout << "No network. Impossible to increase value" << endl;
+			break;
+		default:
+			cout << "Current value = " << currentValue << endl;
+			break;
+		}
 	}
 
 	return 0;
