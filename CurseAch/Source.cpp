@@ -194,13 +194,9 @@ int main() {
 			broadcast(NETWORK_DISABLED);
 			break;
 		case ' ':
-			if (networkEnabled) {
-				currentValue++;
-				cout << "Current value = " << currentValue << endl;
-				broadcast(currentValue);
-			}
-			else
-				cout << "No network. Impossible to increase value" << endl;
+			currentValue++;
+			cout << "Current value = " << currentValue << endl;
+			broadcast(currentValue);
 			break;
 		default:
 			cout << "Current value = " << currentValue << endl;
