@@ -17,6 +17,8 @@ string currentMachineName = "DESKTOP-CO3NPLJ";
 
 int broadcast(int value)
 {
+	if (!networkEnabled)
+		return 0;
 	char * pipeName = new char[80];
 	HANDLE hConnectedPipe;
 	DWORD dwBytesWritten;
