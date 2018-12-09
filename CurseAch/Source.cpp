@@ -17,6 +17,8 @@ string currentMachineName = "DESKTOP-CO3NPLJ";
 
 int broadcast(int value)
 {
+	if (networkEnabled == false)
+		return;
 	char * pipeName = new char[80];
 	HANDLE hConnectedPipe;
 	DWORD dwBytesWritten;
@@ -189,9 +191,9 @@ int main() {
 			broadcast(NETWORK_ENABLED);
 			break;
 		case '-':
-			networkEnabled = false;
 			cout << "Network disabled" << endl;
 			broadcast(NETWORK_DISABLED);
+			networkEnabled = false;
 			break;
 		case ' ':
 			currentValue++;
