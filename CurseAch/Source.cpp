@@ -12,6 +12,7 @@ using namespace std;
 #define NETWORK_DISABLED -3
 
 int currentValue;
+int networkFallTime;
 bool networkEnabled = true;
 HANDLE  hNamedPipe;
 vector <string> machineNames;
@@ -213,9 +214,18 @@ int main() {
 			messageToSend.type = EVENT;
 			messageToSend.value = NETWORK_ENABLED;
 			broadcast(messageToSend);
+			messageToSend.type = INCREASE;
+			for (auto i = increasing.begin(); i != increasing.end(); i++)
+			{
+				if (*i >= networkFallTime) {
+					messageToSend.value = *i;
+					broadcast(messageToSend);
+				}
+			}
 			break;
 		case '-':
 			cout << "Network disabled" << endl;
+			networkFallTime = time(0);
 			messageToSend.type = EVENT;
 			messageToSend.value = NETWORK_DISABLED;
 			broadcast(messageToSend);
