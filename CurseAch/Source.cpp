@@ -2,18 +2,33 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <conio.h>
+#include <set>
+#include <ctime>
 using namespace std;
 
 #define NEW_MACHINE_ADDED -1
+#define NETWORK_ENABLED -2
+#define NETWORK_DISABLED -3
 
 int currentValue;
-
+bool networkEnabled = true;
 HANDLE  hNamedPipe;
 vector <string> machineNames;
+set<int> increasing;
 string currentMachineName = "DESKTOP-CO3NPLJ";
 
-int broadcast(int value)
+enum MessageType{ INCREASE, EVENT};
+
+typedef struct SendingStruct{
+	MessageType type;
+	int value;
+} Message;
+
+int broadcast(Message value)
 {
+	if (!networkEnabled)
+		return 0;
 	char * pipeName = new char[80];
 	HANDLE hConnectedPipe;
 	DWORD dwBytesWritten;
@@ -48,10 +63,9 @@ int broadcast(int value)
 	return sendingCount;
 }
 
-int recieveValue(HANDLE hNamedPipe)
+Message recieveValue(HANDLE hNamedPipe)
 {
-
-	int recievedValue;
+	Message recievedValue;
 	DWORD dwBytesRead;
 	if (!ReadFile(hNamedPipe,   // дескриптор канала    
 		&recievedValue,   // адрес буфера для ввода данных    
@@ -68,7 +82,7 @@ int recieveValue(HANDLE hNamedPipe)
 DWORD WINAPI marker(LPVOID args)
 {
 	bool * execute = (bool *)args;
-	int recievedValue;
+	Message recievedValue;
 	while (*execute)
 	{
 		if (!ConnectNamedPipe(hNamedPipe,   // дескриптор канала    
@@ -82,26 +96,47 @@ DWORD WINAPI marker(LPVOID args)
 			cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
 		}
 
-		if (recievedValue == NEW_MACHINE_ADDED)
-			broadcast(currentValue);
-		else
-		{
-			currentValue = recievedValue;
-			cout << "Current value = " << currentValue << endl;
+		if (recievedValue.type == INCREASE) {
+			increasing.insert(recievedValue.value);
+			if (currentValue != increasing.size()) {
+				currentValue = increasing.size();
+				cout << "Current value = " << currentValue << endl;
+			}
+		}
+		else {
+			switch (recievedValue.value)
+			{
+			case NEW_MACHINE_ADDED:
+				Message msg;
+				msg.type = EVENT;
+				msg.value = currentValue;
+				broadcast(msg);
+				break;
+			case NETWORK_ENABLED:
+				networkEnabled = true;
+				cout << "Network enabled" << endl;
+				break;
+			case NETWORK_DISABLED:
+				networkEnabled = false;
+				cout << "Network disabled" << endl;
+				break;
+			default:
+				break;
+			}
 		}
 
+		
 	}
 	return 0;
 }
 
 
 int main() {
-
 	machineNames.push_back("DESKTOP-CO3NPLJ");
 	machineNames.push_back("DESKTOP-QE9Q318");
+	Message messageToSend;
+	int increaseTime;
 	bool execute = true;
-	int recievedValue;
-	int sendingValue;
 	char pipeName[80];
 	SECURITY_ATTRIBUTES sa;  // атрибуты защиты  
 	SECURITY_DESCRIPTOR sd;  // дескриптор защиты 
@@ -111,7 +146,7 @@ int main() {
 	DWORD  dwBytesWritten;  // для числа записанных байтов
 	DWORD  dwBytesRead;  // для числа прочитанных байтов  
 	DWORD threadID;
-						  // инициализация атрибутов защиты  
+	// инициализация атрибутов защиты  
 	sa.nLength = sizeof(sa);
 	sa.bInheritHandle = FALSE; // дескриптор канала ненаследуемый   // инициализируем дескриптор защиты  
 	InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
@@ -136,10 +171,11 @@ int main() {
 		return 0;
 	}
 	cout << "Pipe succesfully created" << endl;
-	
-	
 
-	if (broadcast(NEW_MACHINE_ADDED) == 0)
+
+	messageToSend.type = EVENT;
+	messageToSend.value = NEW_MACHINE_ADDED;
+	if (broadcast(messageToSend) == 0)
 		currentValue = 0;
 	else
 	{
@@ -148,7 +184,7 @@ int main() {
 		)) {
 			cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
 		}
-		currentValue = recieveValue(hNamedPipe);
+		currentValue = recieveValue(hNamedPipe).value;
 		if (!DisconnectNamedPipe(hNamedPipe)) {
 			cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
 		}
@@ -162,13 +198,50 @@ int main() {
 		&threadID				// идентификатор потока 
 	);
 
-
+	char command;
 	while (true)
 	{
-		cin.get();
-		currentValue++;
-		cout << "Current value = " << currentValue << endl;
-		broadcast(currentValue);
+		command = _getch();
+		//cin >> command;
+		if (command == 0)
+			continue;
+		switch (command)
+		{
+		case '+':
+			networkEnabled = true;
+			cout << "Network enabled" << endl;
+			messageToSend.type = EVENT;
+			messageToSend.value = NETWORK_ENABLED;
+			broadcast(messageToSend);
+			break;
+		case '-':
+			cout << "Network disabled" << endl;
+			messageToSend.type = EVENT;
+			messageToSend.value = NETWORK_DISABLED;
+			broadcast(messageToSend);
+			networkEnabled = false;
+			break;
+		case ' ':
+			currentValue++;
+			increaseTime = time(0);
+			increasing.insert(increaseTime);
+			if (networkEnabled) {
+				cout << "Current value = " << currentValue << endl;
+				messageToSend.type = INCREASE;
+				messageToSend.value = increaseTime;
+				broadcast(messageToSend);
+				break;
+			}
+			else
+				cout << "Value increased" << endl;
+			break;
+		default:
+			if (networkEnabled)
+				cout << "Current value = " << currentValue << endl;
+			else
+				cout << "No network. Unable to get value" << endl;
+			break;
+		}
 	}
 
 	return 0;
