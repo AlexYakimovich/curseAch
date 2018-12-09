@@ -191,9 +191,9 @@ int main() {
 			broadcast(NETWORK_ENABLED);
 			break;
 		case '-':
-			networkEnabled = false;
 			cout << "Network disabled" << endl;
 			broadcast(NETWORK_DISABLED);
+			networkEnabled = false;
 			break;
 		case ' ':
 			if (networkEnabled) {
