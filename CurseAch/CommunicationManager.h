@@ -1,3 +1,9 @@
+#define NEW_MACHINE_ADDED -1
+#define NETWORK_ENABLED -2
+#define NETWORK_DISABLED -3
+#define NETWORK_ERROR -4
+
+
 #pragma once
 class CommunicationManager
 {

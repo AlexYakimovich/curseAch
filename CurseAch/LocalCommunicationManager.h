@@ -6,16 +6,15 @@
 #include <iostream>
 #include "CommunicationManager.h"
 
-class NetworkCommunicationManager : public CommunicationManager 
+class LocalCommunicationManager :
+	public CommunicationManager
 {
 private:
-	HANDLE  hNamedPipe;
-	std::vector<std::string> machineNames;
-	const int id = 0;
+	int id;
 public:
 	int broadcast(int value);
 	int recieveValue();
-	NetworkCommunicationManager();
-	~NetworkCommunicationManager();
+	LocalCommunicationManager(int id);
+	~LocalCommunicationManager();
 };
 

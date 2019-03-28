@@ -3,22 +3,24 @@
 #include <string>
 #include <conio.h>
 #include <vector>
-
+#include "../CurseAch/Message.h"
+#define BROADCAST -1
+#define ERROR INT_MIN
 using namespace std;
 
-vector <HANDLE> clientPipes;
+vector<HANDLE> clientPipes;
 HANDLE serverPipe;
 int currentID = 0;
 
-int recieveValue()
+Message recieveValue()
 {
 	if (!ConnectNamedPipe(serverPipe,   // дескриптор канала    
 		(LPOVERLAPPED)NULL // связь синхронная   
 	)) {
 		cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return -1;
+		return Message(ERROR, ERROR, ERROR);
 	}
-	int recievedValue;
+	Message recievedValue;
 	DWORD dwBytesRead;
 	if (!ReadFile(serverPipe,   // дескриптор канала    
 		&recievedValue,   // адрес буфера для ввода данных    
@@ -31,7 +33,7 @@ int recieveValue()
 	}
 	if (!DisconnectNamedPipe(serverPipe)) {
 		cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return -1;
+		return Message(ERROR, ERROR, ERROR);
 	}
 	return recievedValue;
 }
@@ -82,12 +84,72 @@ void addNewProcess()
 	cout << "Recieved:" << buff;*/
 }
 
+void sendMsg(Message msg)
+{
+	if (!ConnectNamedPipe(clientPipes[msg.recieverID],   // дескриптор канала    
+		(LPOVERLAPPED)NULL // связь синхронная   
+	)) {
+		cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
+		return;
+	}
+	int recievedValue;
+	DWORD dwBytesWritten;
+	if (!WriteFile(
+		clientPipes[msg.recieverID],  // дескриптор канала
+		&msg,  // данные 
+		sizeof(msg), // размер данных 
+		&dwBytesWritten, // количество записанных байтов
+		(LPOVERLAPPED)NULL // синхронная запись 
+	)) {
+		return;
+	}
+	if (!DisconnectNamedPipe(clientPipes[msg.recieverID])) {
+		cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
+		return;
+	}
+}
+
+
+DWORD WINAPI reciever(LPVOID args)
+{
+	while (true)
+	{
+		auto value = recieveValue();
+		if (value.senderID == ERROR)
+			return ERROR;
+		if (value.recieverID == BROADCAST)
+			for (int i = 0; i < currentID; i++)
+			{
+				value.recieverID = i;
+				sendMsg(value);
+			} 
+		else
+			sendMsg(value);
+	}
+	return 0;
+}
+
+
+HANDLE createRecievingThread()
+{
+	DWORD threadID;
+	HANDLE hThread = CreateThread(NULL, // атрибуты защиты 
+		0,							// размер стека потока в байтах 
+		reciever,						// адрес исполняемой функции 
+		NULL,		// адрес параметра 
+		0,							// флаги создания потока
+		&threadID				// идентификатор потока 
+	);
+	return hThread;
+}
+
 int main()
 {
 	char serverPipeName[] = "\\\\.\\pipe\\serverPipe";
 	serverPipe = createPipe(serverPipeName);
 	cin.get();
 	addNewProcess();
-	cout << recieveValue();
+	HANDLE hThread = createRecievingThread();
+	WaitForSingleObject(hThread, INFINITE);
 	system("pause");
 }

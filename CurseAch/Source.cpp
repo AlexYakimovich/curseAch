@@ -1,4 +1,5 @@
 #include "NetworkCommunicationManager.h"
+#include "LocalCommunicationManager.h"
 using namespace std;
 
 int currentValue;
@@ -44,31 +45,8 @@ int main(int argc, char ** argv) {
 		manager = (CommunicationManager *)(new NetworkCommunicationManager());
 	else
 	{
-		int msg = 1337;
-		DWORD dwBytesWritten;
 		int id = atoi(argv[1]);
-		char pipeName[] = "\\\\.\\pipe\\serverPipe";
-		HANDLE hConnectedPipe = CreateFile(pipeName,    // имя канала  
-			GENERIC_READ | GENERIC_WRITE,  // читаем и записываем в канал 
-			FILE_SHARE_READ | FILE_SHARE_WRITE, // разрешаем чтение и запись в канал 
-			(LPSECURITY_ATTRIBUTES)NULL,  // защита по умолчанию
-			OPEN_EXISTING,   // открываем существующий канал
-			FILE_ATTRIBUTE_NORMAL,   // атрибуты по умолчанию  
-			(HANDLE)NULL    // дополнительных атрибутов нет
-		);
-		if (hConnectedPipe == INVALID_HANDLE_VALUE)
-			cout << "KAK ZHE ZAEBALO";
-		if (!WriteFile(
-			hConnectedPipe,  // дескриптор канала
-			&msg,  // данные 
-			sizeof(msg), // размер данных 
-			&dwBytesWritten, // количество записанных байтов
-			(LPOVERLAPPED)NULL // синхронная запись 
-		)) {
-			cout << "HUI" << GetLastError();
-		}
-		cin.get();
-		return 0;
+		manager = (CommunicationManager *)(new LocalCommunicationManager(id));
 	}
 	if (manager->getNetworkEnabled())
 		cout << "Connection succesfully created" << endl;
