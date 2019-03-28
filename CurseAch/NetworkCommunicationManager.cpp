@@ -10,28 +10,29 @@ int NetworkCommunicationManager::broadcast(int value)
 	HANDLE hConnectedPipe;
 	DWORD dwBytesWritten;
 	int sendingCount = 0;
+  Message message(id, -1, value);
 	for (int machineNumber = 0; machineNumber < machineNames.size(); machineNumber++)
 	{
 		if (machineNumber == id)
 			continue;
-		wsprintf(pipeName, "\\\\%s\\pipe\\demo_pipe", machineNames[machineNumber].c_str());     // связываемся с именованным каналом
-		hConnectedPipe = CreateFile(pipeName,    // имя канала  
-			GENERIC_READ | GENERIC_WRITE,  // читаем и записываем в канал 
-			FILE_SHARE_READ | FILE_SHARE_WRITE, // разрешаем чтение и запись в канал 
-			(LPSECURITY_ATTRIBUTES)NULL,  // защита по умолчанию
-			OPEN_EXISTING,   // открываем существующий канал
-			FILE_ATTRIBUTE_NORMAL,   // атрибуты по умолчанию  
-			(HANDLE)NULL    // дополнительных атрибутов нет
+		wsprintf(pipeName, "\\\\%s\\pipe\\demo_pipe", machineNames[machineNumber].c_str());   
+		hConnectedPipe = CreateFile(pipeName,   
+			GENERIC_READ | GENERIC_WRITE, 
+			FILE_SHARE_READ | FILE_SHARE_WRITE, 
+			(LPSECURITY_ATTRIBUTES)NULL,  
+			OPEN_EXISTING,   
+			FILE_ATTRIBUTE_NORMAL, 
+			(HANDLE)NULL   
 		);
-		// проверяем связь с каналом  
+		 
 		if (hConnectedPipe == INVALID_HANDLE_VALUE)
 			continue;
 		if (!WriteFile(
-			hConnectedPipe,  // дескриптор канала
-			&value,  // данные 
-			sizeof(value), // размер данных 
-			&dwBytesWritten, // количество записанных байтов
-			(LPOVERLAPPED)NULL // синхронная запись 
+			hConnectedPipe, 
+			&message,  
+			sizeof(message), 
+			&dwBytesWritten, 
+			(LPOVERLAPPED)NULL
 		)) {
 			continue;
 		}
@@ -40,30 +41,35 @@ int NetworkCommunicationManager::broadcast(int value)
 	return sendingCount;
 }
 
-int NetworkCommunicationManager::recieveValue()
+int NetworkCommunicationManager::recieveValue(int timeout)
 {
-	if (!ConnectNamedPipe(hNamedPipe,   // дескриптор канала    
-		(LPOVERLAPPED)NULL // связь синхронная   
+  DWORD dwIgnore;
+	if (!ConnectNamedPipe(hNamedPipe,    
+		(LPOVERLAPPED)NULL   
 	)) {
 		cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
 		return NETWORK_ERROR;
 	}
-	int recievedValue;
+  LPOVERLAPPED ol = { 0 };
+  ol->hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	Message recievedValue;
 	DWORD dwBytesRead;
-	if (!ReadFile(hNamedPipe,   // дескриптор канала    
-		&recievedValue,   // адрес буфера для ввода данных    
-		sizeof(recievedValue),  // число читаемых байтов    
-		&dwBytesRead,   // число прочитанных байтов    
-		(LPOVERLAPPED)NULL // передача данных синхронная   
-	))
-	{
-		cerr << "Data reading from the named pipe failed." << endl << "The last error code: " << GetLastError() << endl;
-	}
-	if (!DisconnectNamedPipe(hNamedPipe)) {
+  if (!ReadFile(hNamedPipe,
+    &recievedValue,
+    sizeof(recievedValue),
+    &dwBytesRead,
+    ol
+    ))
+  {
+    WaitForSingleObject(ol->hEvent, timeout);
+    if (GetOverlappedResult(hNamedPipe, ol, &dwIgnore, FALSE) == 0)
+      return TIMEOUT_REACHED;
+  }	
+  if (!DisconnectNamedPipe(hNamedPipe)) {
 		cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
 		return NETWORK_ERROR;
 	}
-	return recievedValue;
+	return recievedValue.value;
 }
 
 NetworkCommunicationManager::NetworkCommunicationManager()
@@ -71,23 +77,23 @@ NetworkCommunicationManager::NetworkCommunicationManager()
 	machineNames.push_back("DESKTOP-CO3NPLJ");
 	machineNames.push_back("DESKTOP-QE9Q318");
 	
-	SECURITY_ATTRIBUTES sa;  // атрибуты защиты  
-	SECURITY_DESCRIPTOR sd;  // дескриптор защиты  
-	// инициализация атрибутов защиты  
+	SECURITY_ATTRIBUTES sa;  
+	SECURITY_DESCRIPTOR sd; 
+	
 	sa.nLength = sizeof(sa);
-	sa.bInheritHandle = FALSE; // дескриптор канала ненаследуемый   // инициализируем дескриптор защиты  
+	sa.bInheritHandle = FALSE;
 	InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
-	// устанавливаем атрибуты защиты, разрешая доступ всем пользователям  
+	
 	SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
-	sa.lpSecurityDescriptor = &sd;   // создаем именованный канал для чтения  
-	hNamedPipe = CreateNamedPipe("\\\\.\\pipe\\demo_pipe",   // имя канала  
-		PIPE_ACCESS_DUPLEX,  // читаем из канала и пишем в канал   
-		PIPE_TYPE_MESSAGE | PIPE_WAIT, // синхронная передача сообщений   
-		1,  // максимальное количество экземпляров канала    
-		0,  // размер выходного буфера по умолчанию   
-		0,  // размер входного буфера по умолчанию   
-		INFINITE, // клиент ждет связь 500 мс   
-		&sa  // доступ для всех пользователей  
+	sa.lpSecurityDescriptor = &sd;   
+	hNamedPipe = CreateNamedPipe("\\\\.\\pipe\\demo_pipe",   
+		PIPE_ACCESS_DUPLEX,    
+		PIPE_TYPE_MESSAGE | PIPE_WAIT, 
+		1,    
+		0,    
+		0,  
+		INFINITE,  
+		&sa  
 	);
 	// проверяем на успешное создание  
 	if (hNamedPipe == INVALID_HANDLE_VALUE)

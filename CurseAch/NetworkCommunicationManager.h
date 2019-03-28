@@ -4,6 +4,7 @@
 #include <Windows.h>
 #include <conio.h>
 #include <iostream>
+#include "Message.h"
 #include "CommunicationManager.h"
 
 class NetworkCommunicationManager : public CommunicationManager 
@@ -14,7 +15,7 @@ private:
 	const int id = 0;
 public:
 	int broadcast(int value);
-	int recieveValue();
+	int recieveValue(int timeout);
 	NetworkCommunicationManager();
 	~NetworkCommunicationManager();
 };

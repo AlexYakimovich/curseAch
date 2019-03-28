@@ -1,5 +1,6 @@
 #include "NetworkCommunicationManager.h"
 #include "LocalCommunicationManager.h"
+#define TIMEOUT 500
 using namespace std;
 
 int currentValue;
@@ -12,7 +13,7 @@ DWORD WINAPI marker(LPVOID args)
 	int recievedValue;
 	while (*execute)
 	{
-		recievedValue = manager->recieveValue();
+		recievedValue = manager->recieveValue(INFINITE);
 
 		switch (recievedValue)
 		{
@@ -41,29 +42,38 @@ DWORD WINAPI marker(LPVOID args)
 int main(int argc, char ** argv) {
 	bool execute = true;
 	DWORD threadID;
-	if(argc < 2)
-		manager = (CommunicationManager *)(new NetworkCommunicationManager());
+  if (argc < 2)
+  {
+    manager = (CommunicationManager *)(new NetworkCommunicationManager());
+    cout << "Network manager created" << endl;
+  }
 	else
 	{
 		int id = atoi(argv[1]);
-		manager = (CommunicationManager *)(new LocalCommunicationManager(id));
+    manager = (CommunicationManager *)(new LocalCommunicationManager(id));
+    cout << "Local manager #" << id << " created" << endl;
 	}
 	if (manager->getNetworkEnabled())
 		cout << "Connection succesfully created" << endl;
 	else
 		return -1;
 
-	if (manager->broadcast(NEW_MACHINE_ADDED) == 0)
-		currentValue = 0;
-	else
-		currentValue = manager->recieveValue();
+  if (manager->broadcast(NEW_MACHINE_ADDED) != SUCCESS)
+    return -2;
+  cout << "Broadcast succeed" << endl;
+  currentValue = manager->recieveValue(INFINITE);
+  cout << "Hello there" << endl;
+  if (currentValue == TIMEOUT_REACHED)
+    currentValue = 0;
+  else if (currentValue == NETWORK_ERROR)
+    return -3;
 	cout << "Current value = " << currentValue << endl;
-	CreateThread(NULL, // атрибуты защиты 
-		0,							// размер стека потока в байтах 
-		marker,						// адрес исполняемой функции 
-		&execute,		// адрес параметра 
-		0,							// флаги создания потока
-		&threadID				// идентификатор потока 
+	CreateThread(NULL, 
+		0,				
+		marker,				
+		&execute,	
+		0,							
+		&threadID			
 	);
 
 	char command;

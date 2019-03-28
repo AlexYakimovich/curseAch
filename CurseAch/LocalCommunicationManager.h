@@ -4,6 +4,7 @@
 #include <Windows.h>
 #include <conio.h>
 #include <iostream>
+#include "Message.h"
 #include "CommunicationManager.h"
 
 class LocalCommunicationManager :
@@ -13,7 +14,7 @@ private:
 	int id;
 public:
 	int broadcast(int value);
-	int recieveValue();
+	int recieveValue(int timeout);
 	LocalCommunicationManager(int id);
 	~LocalCommunicationManager();
 };

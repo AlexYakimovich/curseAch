@@ -6,58 +6,68 @@ int LocalCommunicationManager::broadcast(int value)
 {
 	DWORD dwBytesWritten;
 	char * serverPipeName = new char[80];
-	pair<int, int> p = make_pair(value, -1);
-	wsprintf(serverPipeName, "\\\\.\\pipe\\clientPipe#%d", id);
-	HANDLE hConnectedPipe = CreateFile(serverPipeName,    // имя канала  
-		GENERIC_READ | GENERIC_WRITE,  // читаем и записываем в канал 
-		FILE_SHARE_READ | FILE_SHARE_WRITE, // разрешаем чтение и запись в канал 
-		(LPSECURITY_ATTRIBUTES)NULL,  // защита по умолчанию
-		OPEN_EXISTING,   // открываем существующий канал
-		FILE_ATTRIBUTE_NORMAL,   // атрибуты по умолчанию  
-		(HANDLE)NULL    // дополнительных атрибутов нет
+  Message message(id, -1, value);
+	wsprintf(serverPipeName, "\\\\.\\pipe\\serverPipe", id);
+	HANDLE hConnectedPipe = CreateFile(serverPipeName,   
+		GENERIC_READ | GENERIC_WRITE, 
+		FILE_SHARE_READ | FILE_SHARE_WRITE, 
+		(LPSECURITY_ATTRIBUTES)NULL, 
+		OPEN_EXISTING,   
+		FILE_ATTRIBUTE_NORMAL,  
+		(HANDLE)NULL   
 	);
-	// проверяем связь с каналом  
 	if (hConnectedPipe == INVALID_HANDLE_VALUE)
 		return NETWORK_ERROR;
 	if (!WriteFile(
-		hConnectedPipe,  // дескриптор канала
-		&p,  // данные 
-		sizeof(p), // размер данных 
-		&dwBytesWritten, // количество записанных байтов
-		(LPOVERLAPPED)NULL // синхронная запись 
+		hConnectedPipe, 
+		&message, 
+		sizeof(message), 
+		&dwBytesWritten,
+		(LPOVERLAPPED)NULL 
 	)) {
 		return NETWORK_ERROR;
 	}
+  return SUCCESS;
 }
 
-int LocalCommunicationManager::recieveValue()
+int LocalCommunicationManager::recieveValue(int timeout)
 {
+  DWORD dwIgnore;
 	DWORD dwBytesRead;
 	char * clientPipeName = new char[80];
-	int value;
+	Message value;
 	wsprintf(clientPipeName, "\\\\.\\pipe\\clientPipe#%d", id);
-	HANDLE hClientPipe = CreateFile(clientPipeName,    // имя канала  
-		GENERIC_READ | GENERIC_WRITE,  // читаем и записываем в канал 
-		FILE_SHARE_READ | FILE_SHARE_WRITE, // разрешаем чтение и запись в канал 
-		(LPSECURITY_ATTRIBUTES)NULL,  // защита по умолчанию
-		OPEN_EXISTING,   // открываем существующий канал
-		FILE_ATTRIBUTE_NORMAL,   // атрибуты по умолчанию  
-		(HANDLE)NULL    // дополнительных атрибутов нет
+	HANDLE hClientPipe = CreateFile(clientPipeName,  
+		GENERIC_READ | GENERIC_WRITE,  
+		FILE_SHARE_READ | FILE_SHARE_WRITE, 
+		(LPSECURITY_ATTRIBUTES)NULL, 
+		OPEN_EXISTING,  
+		FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,  
+		(HANDLE)NULL   
 	);
 
 	if (hClientPipe == INVALID_HANDLE_VALUE)
 		cout << "KAK ZHE ZAEBALO";
-	cout << "Recv" << id << endl;
+
+  cout << "Hey";
+  LPOVERLAPPED ol = { 0 };
+  cout << "Hey";
+  ol->hEvent = CreateEvent(NULL, TRUE, FALSE, "Hey");
+  cout << "Hey";
 	if (!ReadFile(
-		hClientPipe,  // дескриптор канала
-		&value,  // данные 
-		sizeof(value), // размер данных 
-		&dwBytesRead, // количество записанных байтов
-		(LPOVERLAPPED)NULL // синхронная запись 
+		hClientPipe,
+		&value, 
+		sizeof(value),
+		&dwBytesRead, 
+		ol 
 	)) {
-		cout << "Error while reading pipe. " << GetLastError();
-	}
-	return value;
+    cout << "Hey";
+    WaitForSingleObject(ol->hEvent, timeout);
+    if (GetOverlappedResult(hClientPipe, ol, &dwIgnore, FALSE) == 0)
+      return TIMEOUT_REACHED;
+  }
+  cout << "Here";
+	return value.value;
 }
 
 LocalCommunicationManager::LocalCommunicationManager(int id)
