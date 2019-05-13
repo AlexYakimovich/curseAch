@@ -9,6 +9,11 @@ Message::Message(int sender, int reciever, int value)
 	this->value = value;
 }
 
+bool Message::operator<(const Message & msg)
+{
+	return recieveTime < msg.recieveTime;
+}
+
 Message::Message()
 {
 }

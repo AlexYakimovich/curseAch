@@ -1,78 +1,68 @@
 #include <iostream>
-#include <Windows.h>
 #include <string>
 #include <conio.h>
 #include <vector>
+#include <winsock.h>
+#include <chrono>
+#include <set>
+#include <ctime>
 #include "../CurseAch/Message.h"
+
+#pragma comment(lib,"ws2_32.lib")
+
+#define MAX_CLIENTS 512
 #define BROADCAST -1
 #define ERROR INT_MIN
 using namespace std;
 
-vector<HANDLE> clientPipes;
-HANDLE serverPipe;
 int currentID = 0;
+int MasterSocket;
+int max;
+vector <int> sockets;
+fd_set socketsSet, recievedSet;
+int delay = 100;
+double percentage = 0.5;
+
+set<Message *> msgQ;
+
+//<DIV>
 
 Message recieveValue()
 {
-	if (!ConnectNamedPipe(serverPipe,  
-		(LPOVERLAPPED)NULL  
-	)) {
-		cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return Message(ERROR, ERROR, ERROR);
-	}
 	Message recievedValue;
-	DWORD dwBytesRead;
-	if (!ReadFile(serverPipe,  
-		&recievedValue,      
-		sizeof(recievedValue),     
-		&dwBytesRead,   
-		(LPOVERLAPPED)NULL 
-	))
-	{
-		cerr << "Data reading from the named pipe failed." << endl << "The last error code: " << GetLastError() << endl;
-	}
-	if (!DisconnectNamedPipe(serverPipe)) {
-		cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return Message(ERROR, ERROR, ERROR);
-	}
-	return recievedValue;
-}
+	recievedSet = socketsSet;
+	select(max + 1, &recievedSet, NULL, NULL, NULL);
 
-HANDLE createPipe(char * name)
-{
-	SECURITY_ATTRIBUTES sa; 
-	SECURITY_DESCRIPTOR sd;
-	 
-	sa.nLength = sizeof(sa);
-	sa.bInheritHandle = FALSE;  
-	InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
-	 
-	SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
-	sa.lpSecurityDescriptor = &sd;  
-	HANDLE hNamedPipe = CreateNamedPipe(name,  
-		PIPE_ACCESS_DUPLEX,  
-		PIPE_TYPE_MESSAGE | PIPE_WAIT,   
-		1,   
-		0,  
-		0,  
-		INFINITE, 
-		&sa  
-	);
-	if (hNamedPipe == INVALID_HANDLE_VALUE)
-		cout << "Error creating pipe";
-	return hNamedPipe;
+	for (int ActiveSocket = 0; ActiveSocket <= max; ActiveSocket++)
+	{
+		if (FD_ISSET(ActiveSocket, &recievedSet))
+		{
+			if (ActiveSocket != MasterSocket)
+			{
+				size_t msg_size = recv(ActiveSocket, (char *)&recievedValue, sizeof(recievedValue), 0);
+				return recievedValue;
+			}
+			else
+			{
+				ActiveSocket = accept(MasterSocket, 0, 0);
+				cout << "Client #" << sockets.size() << " connected on " << ActiveSocket << endl;
+				sockets.push_back(ActiveSocket);
+				FD_SET(ActiveSocket, &socketsSet);
+				if (ActiveSocket > max)
+					max = ActiveSocket;
+				return recievedValue;
+			}
+		}
+	}
+
+	return recievedValue;
 }
 
 void addNewProcess()
 {
 	STARTUPINFO info = { sizeof(info) };
 	PROCESS_INFORMATION processInfo;
-	char * clientPipeName = new char[80];
 	char * cmd = new char[80];
-
-	wsprintf(clientPipeName, "\\\\.\\pipe\\clientPipe#%d", currentID);
-	HANDLE hClientPipe = createPipe(clientPipeName);
-	clientPipes.push_back(hClientPipe);
 	wsprintf(cmd, "CurseAch.exe %d", currentID);
 	currentID++;
 	if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &info, &processInfo))
@@ -84,51 +74,64 @@ void addNewProcess()
 	cout << "Recieved:" << buff;*/
 }
 
-void sendMsg(Message msg)
+void sendMsg(Message * msg)
 {
-	if (!ConnectNamedPipe(clientPipes[msg.recieverID],   
-		(LPOVERLAPPED)NULL   
-	)) {
-		cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
+	if (msg->recieverID == msg->senderID)
 		return;
-	}
-	int recievedValue;
-	DWORD dwBytesWritten;
-	if (!WriteFile(
-		clientPipes[msg.recieverID],  
-		&msg, 
-		sizeof(msg), 
-		&dwBytesWritten, 
-		(LPOVERLAPPED)NULL 
-	)) {
-		return;
-	}
-	if (!DisconnectNamedPipe(clientPipes[msg.recieverID])) {
-		cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return;
-	}
+	cout << "Sending message to client #" << msg->recieverID << endl;
+	send(sockets[msg->recieverID], (char *)msg, sizeof(Message), 0);
 }
 
+DWORD WINAPI sender(LPVOID args)
+{
+
+	chrono::time_point<chrono::system_clock> currentTime;
+	while (TRUE)
+	{
+		currentTime = chrono::system_clock::now();
+		if (msgQ.size() != 0 && (*msgQ.begin())->recieveTime <= currentTime)
+		{
+			Message * current = *msgQ.begin();
+			sendMsg(current);
+			delete current;
+			msgQ.erase(current);
+		}
+		Sleep(1);
+	}
+	
+}
 
 DWORD WINAPI reciever(LPVOID args)
 {
 	while (true)
 	{
 		auto value = recieveValue();
+		auto recieveTime = chrono::system_clock::now();
+		if (value.recieverID == value.senderID)
+			continue;
+		cout << "Recieved message from client #" << value.senderID << " to #" << value.recieverID << " value: " << value.value << endl;
 		if (value.senderID == ERROR)
 			return ERROR;
+		Message * sendingValue;
 		if (value.recieverID == BROADCAST)
 			for (int i = 0; i < currentID; i++)
 			{
-				value.recieverID = i;
-				sendMsg(value);
-			} 
+				if (double(rand()) / RAND_MAX < percentage)
+				{
+					sendingValue = new Message(value.senderID, i, value.value);
+					sendingValue->recieveTime = recieveTime + chrono::milliseconds(delay);
+					msgQ.insert(sendingValue);
+				}
+			}
 		else
-			sendMsg(value);
+		{
+			sendingValue = new Message(value.senderID, value.recieverID, value.value);
+			sendingValue->recieveTime = recieveTime + chrono::milliseconds(delay);
+			msgQ.insert(sendingValue);
+		}
 	}
 	return 0;
 }
-
 
 HANDLE createRecievingThread()
 {
@@ -143,13 +146,51 @@ HANDLE createRecievingThread()
 	return hThread;
 }
 
+HANDLE createSendingThread()
+{
+	DWORD threadID;
+	HANDLE hThread = CreateThread(NULL,
+		0,
+		sender,
+		NULL,
+		0,
+		&threadID
+	);
+	return hThread;
+}
+
 int main()
 {
-	char serverPipeName[] = "\\\\.\\pipe\\serverPipe";
-	serverPipe = createPipe(serverPipeName);
-  _getch();
-	addNewProcess();
-	HANDLE hThread = createRecievingThread();
-	WaitForSingleObject(hThread, INFINITE);
+	srand(time(0));
+	WSADATA wsa;
+	if (WSAStartup(1, &wsa) != 0)
+	{
+		printf("Failed. Error Code : %d", WSAGetLastError());
+		return 1;
+	}
+	MasterSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	max = MasterSocket;
+	struct sockaddr_in SockAddr;
+	SockAddr.sin_family = AF_INET;
+	SockAddr.sin_port = htons(1337);
+	SockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	bind(MasterSocket, (struct sockaddr *)(&SockAddr), sizeof(SockAddr));
+
+	listen(MasterSocket, SOMAXCONN);
+
+	FD_ZERO(&socketsSet);
+	FD_ZERO(&recievedSet);
+	FD_SET(MasterSocket, &socketsSet);
+
+	HANDLE hRecvThread = createRecievingThread();
+	HANDLE hSendThread = createSendingThread();
+
+	while (true)
+	{
+		auto sym = _getch();
+		if(sym == ' ')
+			addNewProcess();
+	}
+	WaitForSingleObject(hRecvThread, INFINITE);
 	system("pause");
 }
