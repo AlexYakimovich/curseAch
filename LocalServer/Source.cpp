@@ -6,6 +6,7 @@
 #include <chrono>
 #include <set>
 #include <ctime>
+#include <algorithm>
 #include "../CurseAch/Message.h"
 
 #pragma comment(lib,"ws2_32.lib")
@@ -17,13 +18,13 @@ using namespace std;
 
 int currentID = 0;
 int MasterSocket;
-int max;
+int maxSocket;
 vector <int> sockets;
 fd_set socketsSet, recievedSet;
-int delay = 100;
-double percentage = 0.5;
+int delay = 10;
+double percentage = 1;
 
-set<Message *> msgQ;
+set<Message> msgQ;
 
 //<DIV>
 
@@ -31,9 +32,9 @@ Message recieveValue()
 {
 	Message recievedValue;
 	recievedSet = socketsSet;
-	select(max + 1, &recievedSet, NULL, NULL, NULL);
+	select(maxSocket + 1, &recievedSet, NULL, NULL, NULL);
 
-	for (int ActiveSocket = 0; ActiveSocket <= max; ActiveSocket++)
+	for (int ActiveSocket = 0; ActiveSocket <= maxSocket; ActiveSocket++)
 	{
 		if (FD_ISSET(ActiveSocket, &recievedSet))
 		{
@@ -48,8 +49,8 @@ Message recieveValue()
 				cout << "Client #" << sockets.size() << " connected on " << ActiveSocket << endl;
 				sockets.push_back(ActiveSocket);
 				FD_SET(ActiveSocket, &socketsSet);
-				if (ActiveSocket > max)
-					max = ActiveSocket;
+				if (ActiveSocket > maxSocket)
+					maxSocket = ActiveSocket;
 				return recievedValue;
 			}
 		}
@@ -74,12 +75,12 @@ void addNewProcess()
 	cout << "Recieved:" << buff;*/
 }
 
-void sendMsg(Message * msg)
+void sendMsg(Message msg)
 {
-	if (msg->recieverID == msg->senderID)
+	if (msg.recieverID == msg.senderID)
 		return;
-	cout << "Sending message to client #" << msg->recieverID << endl;
-	send(sockets[msg->recieverID], (char *)msg, sizeof(Message), 0);
+	cout << "Sending message to client #" << msg.recieverID << endl;
+	send(sockets[msg.recieverID], (char *)&msg, sizeof(Message), 0);
 }
 
 DWORD WINAPI sender(LPVOID args)
@@ -89,11 +90,10 @@ DWORD WINAPI sender(LPVOID args)
 	while (TRUE)
 	{
 		currentTime = chrono::system_clock::now();
-		if (msgQ.size() != 0 && (*msgQ.begin())->recieveTime <= currentTime)
+		if (msgQ.size() != 0 && (*msgQ.begin()).recieveTime <= currentTime)
 		{
-			Message * current = *msgQ.begin();
+			Message current = *msgQ.begin();
 			sendMsg(current);
-			delete current;
 			msgQ.erase(current);
 		}
 		Sleep(1);
@@ -112,21 +112,21 @@ DWORD WINAPI reciever(LPVOID args)
 		cout << "Recieved message from client #" << value.senderID << " to #" << value.recieverID << " value: " << value.value << endl;
 		if (value.senderID == ERROR)
 			return ERROR;
-		Message * sendingValue;
+		Message sendingValue;
 		if (value.recieverID == BROADCAST)
 			for (int i = 0; i < currentID; i++)
 			{
 				if (double(rand()) / RAND_MAX < percentage)
 				{
-					sendingValue = new Message(value.senderID, i, value.value);
-					sendingValue->recieveTime = recieveTime + chrono::milliseconds(delay);
+					sendingValue = Message(value.senderID, i, value.value);
+					sendingValue.recieveTime = recieveTime + chrono::milliseconds(delay);
 					msgQ.insert(sendingValue);
 				}
 			}
 		else
 		{
-			sendingValue = new Message(value.senderID, value.recieverID, value.value);
-			sendingValue->recieveTime = recieveTime + chrono::milliseconds(delay);
+			sendingValue = Message(value.senderID, value.recieverID, value.value);
+			sendingValue.recieveTime = recieveTime + chrono::milliseconds(delay);
 			msgQ.insert(sendingValue);
 		}
 	}
@@ -169,7 +169,7 @@ int main()
 		return 1;
 	}
 	MasterSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	max = MasterSocket;
+	maxSocket = MasterSocket;
 	struct sockaddr_in SockAddr;
 	SockAddr.sin_family = AF_INET;
 	SockAddr.sin_port = htons(1337);
