@@ -30,11 +30,6 @@ set<Message> msgQ;
 
 Message recieveValue()
 {
-	Message a, b;
-	if (a < b)
-	{
-		return a;
-	}
 	Message recievedValue;
 	recievedSet = socketsSet;
 	select(maxSocket + 1, &recievedSet, NULL, NULL, NULL);
