@@ -21,7 +21,7 @@ int MasterSocket;
 int maxSocket;
 vector <int> sockets;
 fd_set socketsSet, recievedSet;
-int delay = 10;
+int delay = 1000;
 double percentage = 1;
 
 set<Message> msgQ;
@@ -30,6 +30,11 @@ set<Message> msgQ;
 
 Message recieveValue()
 {
+	Message a, b;
+	if (a < b)
+	{
+		return a;
+	}
 	Message recievedValue;
 	recievedSet = socketsSet;
 	select(maxSocket + 1, &recievedSet, NULL, NULL, NULL);
@@ -118,6 +123,7 @@ DWORD WINAPI reciever(LPVOID args)
 			{
 				if (double(rand()) / RAND_MAX < percentage)
 				{
+					recieveTime = chrono::system_clock::now();
 					sendingValue = Message(value.senderID, i, value.value);
 					sendingValue.recieveTime = recieveTime + chrono::milliseconds(delay);
 					msgQ.insert(sendingValue);
