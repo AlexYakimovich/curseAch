@@ -2,29 +2,25 @@
 #include "LocalCommunicationManager.h"
 #include <set>
 #include <Windows.h>
-#define APPEND_TIMEOUT 100
-#define ELECTION_TIMEOUT_MIN 350
-#define ELECTION_TIMEOUT_MAX 700
+#define TIMEOUT 1000
 using namespace std;
-enum NodeState { leader, candidate, follower };
+enum NodeState { proposer, acceptor};
 
 typedef struct {
-  int term;
   MessageType type;
-  int value;
+  long long proposalId;
+  long long acceptedId;
+  long long value;
 } MessageValue;
 
-set<int> ids;
-int currentLeader;
-int currentValue;
-int currentTerm = 0;
-int nodesCount;
-bool voted = false;
-NodeState currentNodeState = follower;
+long long nextProposalNumber = 0;
+long long currentValue;
+long long nodesCount;
+NodeState currentNodeState = acceptor;
 
 CommunicationManager * manager;
 
-void changeValue(int newValue)
+void changeValue(long long newValue)
 {
   if (newValue > currentValue)
   {
@@ -33,12 +29,13 @@ void changeValue(int newValue)
   }
 }
 
-MessageValue parseMessage(int msg)
+MessageValue parseMessage(long long msg)
 {
   MessageValue val;
-  val.term = msg & 0xf;
-  val.type = (MessageType)((msg >> 8) & 0xf);
-  val.value = (msg >> 16);
+  val.type = (MessageType)((msg) & 0xff);
+  val.proposalId = (msg >> 16) & 0xff;
+  val.acceptedId = (msg >> 32) & 0xff;
+  val.value = msg >> 48;
   return val;
 }
 
@@ -47,33 +44,87 @@ DWORD WINAPI marker(LPVOID args)
   bool * execute = (bool *)args;
   Message recievedMessage;
   MessageValue recievedValue;
-  int votesCount;
-  int timeout;
+  long long votesCount;
+
+  long long lastAcceptedId = 0;
+  long long promicesRecieved = 0;
+  long long proposalId = 0;
+
+  long long acceptedId = 0;
+  long long promisedId = 0;
+
   chrono::time_point<chrono::system_clock> lastRecieve = chrono::system_clock::now();
   while (*execute)
   {
-	timeout = ELECTION_TIMEOUT_MIN + ((ELECTION_TIMEOUT_MAX - ELECTION_TIMEOUT_MIN)*rand()) / RAND_MAX;
 	switch (currentNodeState)
 	{
-	case leader:
-	  manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, AppendEntry, currentValue));
-	  recievedMessage = manager->recieveValue(APPEND_TIMEOUT);
-	  recievedValue = parseMessage(recievedMessage.value);
-	  if (recievedValue.term > currentTerm)
+	case proposer:
+	  cout << "proposer" << endl;
+	  promicesRecieved = 1;
+	  proposalId = nextProposalNumber;
+	  nextProposalNumber++;
+	  manager->broadcast(LocalCommunicationManager::makeMessage(Prepare, proposalId, proposalId, currentValue));
+
+	  do
 	  {
-		currentTerm = recievedValue.term;
-		changeValue(recievedValue.value);
-		currentNodeState = follower;
-		break;
-	  }
-	  if (recievedValue.type == NewValue)
+		recievedMessage = manager->recieveValue(TIMEOUT);
+		recievedValue = parseMessage(recievedMessage.value);
+		if (recievedValue.type == Promise)
+		{
+		  if (recievedValue.proposalId != proposalId)
+			continue;
+		  if (recievedValue.acceptedId > lastAcceptedId)
+		  {
+			lastAcceptedId = recievedValue.acceptedId;
+			changeValue(recievedValue.value);
+		  }
+		  promicesRecieved++;
+		}
+		else if (recievedValue.type == Error)
+		{
+		  //cout << "Timeout" << endl;
+		  break;
+		}
+	  } while (promicesRecieved * 2 <= nodesCount);
+	  //cout << "Total promices: " << promicesRecieved << endl;
+	  if (promicesRecieved * 2 > nodesCount)
 	  {
-		changeValue(recievedValue.value);
-		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
+		//cout << "Sending accept " << proposalId << " " << proposalId << " " << currentValue << endl;
+		manager->broadcast(LocalCommunicationManager::makeMessage(Accept, proposalId, proposalId, currentValue));
 	  }
+	  currentNodeState = acceptor;
+	  cout << "acceptor" << endl;
 	  break;
-	case candidate:
-	  votesCount = 1;
+	case acceptor:
+	  recievedMessage = manager->recieveValue(TIMEOUT / 10);
+	  recievedValue = parseMessage(recievedMessage.value);
+	  if (recievedValue.type == Prepare)
+	  {
+		//cout << "Recv prepare" << endl;
+		if (recievedValue.proposalId == promisedId)
+		{
+		  //cout << "Sending promise " << recievedValue.proposalId << " " << acceptedId << " " << currentValue << endl;
+		  manager->sendValue(LocalCommunicationManager::makeMessage(Promise, recievedValue.proposalId, acceptedId, currentValue), recievedMessage.senderID);
+		}
+		else if (recievedValue.proposalId > promisedId)
+		{
+		  promisedId = recievedValue.proposalId;
+		  //cout << "Sending promise " << recievedValue.proposalId << " " << acceptedId << " " << currentValue << endl;
+		  manager->sendValue(LocalCommunicationManager::makeMessage(Promise, recievedValue.proposalId, acceptedId, currentValue), recievedMessage.senderID);
+		}
+	  }
+	  else if(recievedValue.type == Accept)
+	  {
+		//cout << "Recv accept" << endl;
+		if (recievedValue.proposalId >= promisedId)
+		{
+		  promisedId = recievedValue.proposalId;
+		  nextProposalNumber = promisedId + 1;
+		  acceptedId = recievedValue.proposalId;
+		  changeValue(recievedValue.value);
+		}
+	  }
+	  /*votesCount = 1;
 	  voted = true;
 	  lastRecieve = chrono::system_clock::now();
 	  while (votesCount < nodesCount / 2 + 1)
@@ -102,32 +153,7 @@ DWORD WINAPI marker(LPVOID args)
 	  {
 		cout << "lead" << endl;
 		currentNodeState = leader;
-	  }
-	  break;
-	case follower:
-	  recievedMessage = manager->recieveValue(timeout);
-	  recievedValue = parseMessage(recievedMessage.value);
-	  if (recievedValue.type == Error && recievedValue.value == TIMEOUT_REACHED)
-	  {
-		cout << "candidate" << endl;
-		currentNodeState = candidate;
-		currentTerm++;
-		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, RequestVote, currentValue));
-		break;
-	  }
-	  if (recievedValue.term < currentTerm)
-		break;
-	  else
-		currentTerm = recievedValue.term;
-	  if (recievedValue.type == RequestVote) {
-		manager->sendValue(LocalCommunicationManager::makeMessage(currentTerm, Vote, currentValue), recievedMessage.senderID);
-		voted = true;
-		break;
-	  }
-	  if (recievedValue.type == AppendEntry)
-		currentLeader = recievedMessage.senderID;
-	  voted = false;
-	  changeValue(recievedValue.value);
+	  }*/
 	  break;
 	default:
 	  break;
@@ -136,7 +162,7 @@ DWORD WINAPI marker(LPVOID args)
   return 0;
 }
 
-int main(int argc, char ** argv) {
+int main(long long argc, char ** argv) {
   srand(time(0));
   HWND console = GetConsoleWindow();
   RECT r;
@@ -154,14 +180,13 @@ int main(int argc, char ** argv) {
   }
   else
   {
-	int id = atoi(argv[1]);
+	long long id = atoi(argv[1]);
 	nodesCount = id + 1;
 	manager = (CommunicationManager *)(new LocalCommunicationManager(id));
 	cout << "Local manager #" << id << " created" << endl;
   }
   if (manager->getNetworkEnabled())
 	cout << "Connection succesfully created" << endl;
-  cout << "follow" << endl;
   currentValue = 0;
   cout << "Current value = " << currentValue << endl;
   threadHandle = CreateThread(NULL,
@@ -183,10 +208,7 @@ int main(int argc, char ** argv) {
 	  if (manager->getNetworkEnabled())
 	  {
 		changeValue(currentValue + 1);
-		if (currentNodeState == leader)
-		  manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
-		else
-		  manager->sendValue(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue), currentLeader);
+		currentNodeState = proposer;
 	  }
 	}
 	else

@@ -16,12 +16,12 @@
 #define ERROR INT_MIN
 using namespace std;
 
-int currentID = 0;
-int MasterSocket;
-int maxSocket;
-vector <int> sockets;
+long long currentID = 0;
+long long MasterSocket;
+long long maxSocket;
+vector <long long> sockets;
 fd_set socketsSet, recievedSet;
-int delay = 10;
+long long delay = 10;
 double percentage = 1;
 
 set<Message> msgQ;
@@ -34,7 +34,7 @@ Message recieveValue()
 	recievedSet = socketsSet;
 	select(maxSocket + 1, &recievedSet, NULL, NULL, NULL);
 
-	for (int ActiveSocket = 0; ActiveSocket <= maxSocket; ActiveSocket++)
+	for (long long ActiveSocket = 0; ActiveSocket <= maxSocket; ActiveSocket++)
 	{
 		if (FD_ISSET(ActiveSocket, &recievedSet))
 		{

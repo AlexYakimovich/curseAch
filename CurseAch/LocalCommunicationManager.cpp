@@ -2,31 +2,31 @@
 
 using namespace std;
 
-int LocalCommunicationManager::makeMessage(int term, MessageType type, short int value)
+long long LocalCommunicationManager::makeMessage(MessageType type, long long proposalId, long long acceptedId, long long value)
 {
-  return term | (type << 8) | (value << 16);
+  return type | (proposalId << 16) | (acceptedId << 32) | (value << 48);
 }
 
-int LocalCommunicationManager::getID()
+long long LocalCommunicationManager::getID()
 {
   return id;
 }
 
-int LocalCommunicationManager::broadcast(int value)
+long long LocalCommunicationManager::broadcast(long long value)
 {
   Message message(id, -1, value);
   send(ClientSocket, (char *)&message, sizeof(message), 0);
   return SUCCESS;
 }
 
-int LocalCommunicationManager::sendValue(int value, int to)
+long long LocalCommunicationManager::sendValue(long long value, long long to)
 {
   Message message(id, to, value);
   send(ClientSocket, (char *)&message, sizeof(message), 0);
   return SUCCESS;
 }
 
-Message LocalCommunicationManager::recieveValue(int timeout)
+Message LocalCommunicationManager::recieveValue(long long timeout)
 {
 	Message message;
 	fd_set set;
@@ -35,9 +35,9 @@ Message LocalCommunicationManager::recieveValue(int timeout)
 	FD_SET(ClientSocket, &set);
 	tv.tv_usec = (timeout % 1000)*1000;
 	tv.tv_sec = timeout / 1000;
-	int rv = select(ClientSocket, &set, NULL, NULL, &tv);
+	long long rv = select(ClientSocket, &set, NULL, NULL, &tv);
 	if (rv == 0) {
-	  return Message(0, 0, makeMessage(0, Error, TIMEOUT_REACHED));
+	  return Message(0, 0, makeMessage(Error, 0, 0, TIMEOUT_REACHED));
 	}
 	recv(ClientSocket, (char *)&message, sizeof(message), 0);
 	return message;
@@ -49,7 +49,7 @@ LocalCommunicationManager::~LocalCommunicationManager()
 }
 
 
-LocalCommunicationManager::LocalCommunicationManager(int id)
+LocalCommunicationManager::LocalCommunicationManager(long long id)
 {
 	srand(time(0));
 	this->id = id;

@@ -11,18 +11,18 @@
 #pragma comment(lib,"ws2_32.lib")
 
 class LocalCommunicationManager :
-	public CommunicationManager
+  public CommunicationManager
 {
 private:
-	int id;
-	int ClientSocket;
+  long long id;
+  long long ClientSocket;
 public:
-	static int makeMessage(int term, MessageType type, short int value);
-	int getID();
-	int broadcast(int value);
-	int sendValue(int value, int to);
-	Message recieveValue(int timeout);
-	LocalCommunicationManager(int id);
-	~LocalCommunicationManager();
+  static long long makeMessage(MessageType type, long long proposalId, long long acceptedId, long long value);
+  long long getID();
+  long long broadcast(long long value);
+  long long sendValue(long long value, long long to);
+  Message recieveValue(long long timeout);
+  LocalCommunicationManager(long long id);
+  ~LocalCommunicationManager();
 };
 

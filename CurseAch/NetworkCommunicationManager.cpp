@@ -2,16 +2,16 @@
 
 using namespace std;
 
-int NetworkCommunicationManager::broadcast(int value)
+long long NetworkCommunicationManager::broadcast(long long value)
 {
 	if (!networkEnabled)
 		return 0;
 	char * pipeName = new char[80];
 	HANDLE hConnectedPipe;
 	DWORD dwBytesWritten;
-	int sendingCount = 0;
+	long long sendingCount = 0;
   Message message(id, -1, value);
-	for (int machineNumber = 0; machineNumber < machineNames.size(); machineNumber++)
+	for (long long machineNumber = 0; machineNumber < machineNames.size(); machineNumber++)
 	{
 		if (machineNumber == id)
 			continue;
@@ -41,13 +41,13 @@ int NetworkCommunicationManager::broadcast(int value)
 	return sendingCount;
 }
 
-int NetworkCommunicationManager::sendValue(int value, int to)
+long long NetworkCommunicationManager::sendValue(long long value, long long to)
 {
   //imp me
   return 0;
 }
 
-Message NetworkCommunicationManager::recieveValue(int timeout)
+Message NetworkCommunicationManager::recieveValue(long long timeout)
 {
   DWORD dwIgnore;
 	if (!ConnectNamedPipe(hNamedPipe,    
