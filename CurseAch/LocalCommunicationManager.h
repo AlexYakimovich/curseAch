@@ -17,8 +17,11 @@ private:
 	int id;
 	int ClientSocket;
 public:
+	static int makeMessage(int term, MessageType type, short int value);
+	int getID();
 	int broadcast(int value);
-	int recieveValue(int timeout);
+	int sendValue(int value, int to);
+	Message recieveValue(int timeout);
 	LocalCommunicationManager(int id);
 	~LocalCommunicationManager();
 };

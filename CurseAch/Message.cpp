@@ -3,7 +3,7 @@
 
 
 
-Message::Message(int sender, int reciever, int value)
+Message::Message(int sender, int reciever, int value = 0)
 {
 	senderID = sender;
 	recieverID = reciever;

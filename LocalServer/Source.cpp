@@ -21,7 +21,7 @@ int MasterSocket;
 int maxSocket;
 vector <int> sockets;
 fd_set socketsSet, recievedSet;
-int delay = 1000;
+int delay = 10;
 double percentage = 1;
 
 set<Message> msgQ;
@@ -41,6 +41,8 @@ Message recieveValue()
 			if (ActiveSocket != MasterSocket)
 			{
 				size_t msg_size = recv(ActiveSocket, (char *)&recievedValue, sizeof(recievedValue), 0);
+				if (msg_size == -1)
+				  FD_CLR(ActiveSocket, &socketsSet);
 				return recievedValue;
 			}
 			else
@@ -64,7 +66,7 @@ void addNewProcess()
 	STARTUPINFO info = { sizeof(info) };
 	PROCESS_INFORMATION processInfo;
 	char * cmd = new char[80];
-	wsprintf(cmd, "CurseAch.exe %d", currentID);
+	wsprintf(cmd, "CurseAch.exe %d %d", currentID);
 	currentID++;
 	if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &info, &processInfo))
 		cout << "Error creating process." << endl;
@@ -77,10 +79,10 @@ void addNewProcess()
 
 void sendMsg(Message msg)
 {
-	if (msg.recieverID == msg.senderID)
-		return;
-	cout << "Sending message to client #" << msg.recieverID << endl;
-	send(sockets[msg.recieverID], (char *)&msg, sizeof(Message), 0);
+  if (msg.recieverID == msg.senderID)
+	return;
+  cout << "Sending message to client #" << msg.recieverID << endl;
+  send(sockets[msg.recieverID], (char *)&msg, sizeof(Message), 0);
 }
 
 DWORD WINAPI sender(LPVOID args)
@@ -107,14 +109,15 @@ DWORD WINAPI reciever(LPVOID args)
 	{
 		auto value = recieveValue();
 		auto recieveTime = chrono::system_clock::now();
+		cout << "R";
 		if (value.recieverID == value.senderID)
 			continue;
-		cout << "Recieved message from client #" << value.senderID << " to #" << value.recieverID << " value: " << value.value << endl;
+		cout << "ecieved message from client #" << value.senderID << " to #" << value.recieverID << " value: " << value.value << endl;
 		if (value.senderID == ERROR)
 			return ERROR;
 		Message sendingValue;
 		if (value.recieverID == BROADCAST)
-			for (int i = 0; i < currentID; i++)
+			for (auto i = 0; i < sockets.size(); i++)
 			{
 				if (double(rand()) / RAND_MAX < percentage)
 				{
