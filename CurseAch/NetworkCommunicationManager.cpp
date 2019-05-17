@@ -41,14 +41,20 @@ int NetworkCommunicationManager::broadcast(int value)
 	return sendingCount;
 }
 
-int NetworkCommunicationManager::recieveValue(int timeout)
+int NetworkCommunicationManager::sendValue(int value, int to)
+{
+  //imp me
+  return 0;
+}
+
+Message NetworkCommunicationManager::recieveValue(int timeout)
 {
   DWORD dwIgnore;
 	if (!ConnectNamedPipe(hNamedPipe,    
 		(LPOVERLAPPED)NULL   
 	)) {
 		cerr << "The connection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return NETWORK_ERROR;
+		return Message(0, Error, NETWORK_ERROR);
 	}
   LPOVERLAPPED ol = { 0 };
   ol->hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -63,13 +69,13 @@ int NetworkCommunicationManager::recieveValue(int timeout)
   {
     WaitForSingleObject(ol->hEvent, timeout);
     if (GetOverlappedResult(hNamedPipe, ol, &dwIgnore, FALSE) == 0)
-      return TIMEOUT_REACHED;
+	  return Message(0, Error, TIMEOUT_REACHED);
   }	
   if (!DisconnectNamedPipe(hNamedPipe)) {
 		cerr << "The disconnection failed." << endl << "The last error code: " << GetLastError() << endl;
-		return NETWORK_ERROR;
+		return Message(0, Error, NETWORK_ERROR);
 	}
-	return recievedValue.value;
+	return recievedValue;
 }
 
 NetworkCommunicationManager::NetworkCommunicationManager()
