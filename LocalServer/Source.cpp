@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <conio.h>
 #include <vector>
@@ -8,14 +9,24 @@
 #include <ctime>
 #include <algorithm>
 #include "../CurseAch/Message.h"
+#include "../CurseAch/LocalCommunicationManager.h"
 
 #pragma comment(lib,"ws2_32.lib")
+
+long long makeMessage(MessageType type, long long proposalId, long long acceptedId, long long value)
+{
+  return type | (proposalId << 16) | (acceptedId << 32) | (value << 48);
+}
+
 
 #define MAX_CLIENTS 512
 #define BROADCAST -1
 #define ERROR INT_MIN
+#define SERVER 1000
 using namespace std;
 
+long long success = 0;
+long long expectedValue;
 long long currentID = 0;
 long long MasterSocket;
 long long maxSocket;
@@ -48,7 +59,7 @@ Message recieveValue()
 			else
 			{
 				ActiveSocket = accept(MasterSocket, 0, 0);
-				cout << "Client #" << sockets.size() << " connected on " << ActiveSocket << endl;
+				//cout << "Client #" << sockets.size() << " connected on " << ActiveSocket << endl;
 				sockets.push_back(ActiveSocket);
 				FD_SET(ActiveSocket, &socketsSet);
 				if (ActiveSocket > maxSocket)
@@ -61,7 +72,7 @@ Message recieveValue()
 	return recievedValue;
 }
 
-void addNewProcess()
+HANDLE addNewProcess()
 {
 	STARTUPINFO info = { sizeof(info) };
 	PROCESS_INFORMATION processInfo;
@@ -75,13 +86,14 @@ void addNewProcess()
 	DWORD cbread;
 	ReadFile(pipe.first, buff, 5, &cbread, NULL);
 	cout << "Recieved:" << buff;*/
+	return processInfo.hProcess;
 }
 
 void sendMsg(Message msg)
 {
   if (msg.recieverID == msg.senderID)
 	return;
-  cout << "Sending message to client #" << msg.recieverID << endl;
+  //cout << "Sending message to client #" << msg.recieverID << endl;
   send(sockets[msg.recieverID], (char *)&msg, sizeof(Message), 0);
 }
 
@@ -109,10 +121,24 @@ DWORD WINAPI reciever(LPVOID args)
 	{
 		auto value = recieveValue();
 		auto recieveTime = chrono::system_clock::now();
-		cout << "R";
+		//cout << "R";
 		if (value.recieverID == value.senderID)
 			continue;
-		cout << "ecieved message from client #" << value.senderID << " to #" << value.recieverID << " value: " << value.value << endl;
+		//cout << "ecieved message from client #" << value.senderID << " to #" << value.recieverID << " value: " << value.value << endl;
+		if (value.recieverID == SERVER)
+		{
+		  if (expectedValue == value.value)
+		  {
+			success++;
+			cout << "Success" << endl;
+		  }
+		  else
+		  {
+			cout << "Failure " << value.value << " / " << expectedValue << endl;
+		  }
+		  expectedValue = -1;
+		  continue;
+		}
 		if (value.senderID == ERROR)
 			return ERROR;
 		Message sendingValue;
@@ -163,6 +189,8 @@ HANDLE createSendingThread()
 	return hThread;
 }
 
+
+
 int main()
 {
 	srand(time(0));
@@ -189,11 +217,38 @@ int main()
 	HANDLE hRecvThread = createRecievingThread();
 	HANDLE hSendThread = createSendingThread();
 
-	while (true)
+	int machinesCount, inputCount, input;
+	Message sendingValue;
+
+	ifstream in("tests.txt");
+	for (int i = 0; i < 100; i++)
 	{
-		auto sym = _getch();
-		if(sym == ' ')
-			addNewProcess();
+	  currentID = 0;
+	  sockets.clear();
+	  msgQ.clear();
+	  vector<HANDLE> hProc;
+	  in >> machinesCount;
+	  in >> inputCount;
+	  for(int g = 0; g < machinesCount; g++)
+		hProc.push_back(addNewProcess());
+	  Sleep(500);
+	  for (int value = 1; value <= inputCount; value++)
+	  {
+		in >> input;
+		sendingValue = Message(1000, input, makeMessage(ServerNewValue, 0,0,value));
+		sendingValue.recieveTime = chrono::system_clock::now();
+		sendMsg(sendingValue);
+		Sleep(300);
+	  }
+	  expectedValue = inputCount;
+	  sendingValue = Message(1000, input, makeMessage(ServerRequestValue, 0, 0, 0));
+	  sendingValue.recieveTime = chrono::system_clock::now();
+	  sendMsg(sendingValue);
+	  while (expectedValue != -1)
+		Sleep(100);
+	  for (auto it = hProc.begin(); it != hProc.end(); it++)
+		TerminateProcess(*it, 2);
+	  hProc.clear();
 	}
 	WaitForSingleObject(hRecvThread, INFINITE);
 	system("pause");

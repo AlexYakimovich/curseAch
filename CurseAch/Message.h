@@ -1,7 +1,7 @@
 #include <chrono>
 #pragma once
 
-enum MessageType {Prepare, Promise, Accept, Error};
+enum MessageType {Prepare, Promise, Accept, Error, ServerNewValue, ServerRequestValue};
 
 class Message
 {

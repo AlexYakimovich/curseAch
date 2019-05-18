@@ -2,7 +2,7 @@
 #include "LocalCommunicationManager.h"
 #include <set>
 #include <Windows.h>
-#define TIMEOUT 1000
+#define TIMEOUT 100
 using namespace std;
 enum NodeState { proposer, acceptor};
 
@@ -98,6 +98,17 @@ DWORD WINAPI marker(LPVOID args)
 	case acceptor:
 	  recievedMessage = manager->recieveValue(TIMEOUT / 10);
 	  recievedValue = parseMessage(recievedMessage.value);
+	  if (recievedValue.type == ServerNewValue)
+	  {
+		changeValue(recievedValue.value);
+		currentNodeState = proposer;
+		break;
+	  }
+	  if (recievedValue.type == ServerRequestValue)
+	  {
+		manager->sendValue(currentValue, recievedMessage.senderID);
+		break;
+	  }
 	  if (recievedValue.type == Prepare)
 	  {
 		//cout << "Recv prepare" << endl;
