@@ -13,6 +13,8 @@
 
 #pragma comment(lib,"ws2_32.lib")
 
+#define tests 1
+
 long long makeMessage(MessageType type, long long proposalId, long long acceptedId, long long value)
 {
   return type | (proposalId << 16) | (acceptedId << 32) | (value << 48);
@@ -30,10 +32,11 @@ long long expectedValue;
 long long currentID = 0;
 long long MasterSocket;
 long long maxSocket;
+CRITICAL_SECTION section;
 vector <long long> sockets;
 fd_set socketsSet, recievedSet;
 long long delay = 10;
-double percentage = 1;
+double percentage = 0.30;
 
 set<Message> msgQ;
 
@@ -104,12 +107,14 @@ DWORD WINAPI sender(LPVOID args)
 	while (TRUE)
 	{
 		currentTime = chrono::system_clock::now();
+		EnterCriticalSection(&section);
 		if (msgQ.size() != 0 && (*msgQ.begin()).recieveTime <= currentTime)
 		{
 			Message current = *msgQ.begin();
 			sendMsg(current);
 			msgQ.erase(current);
 		}
+		LeaveCriticalSection(&section);
 		Sleep(1);
 	}
 	
@@ -150,14 +155,18 @@ DWORD WINAPI reciever(LPVOID args)
 					recieveTime = chrono::system_clock::now();
 					sendingValue = Message(value.senderID, i, value.value);
 					sendingValue.recieveTime = recieveTime + chrono::milliseconds(delay);
+					EnterCriticalSection(&section);
 					msgQ.insert(sendingValue);
+					LeaveCriticalSection(&section);
 				}
 			}
 		else
 		{
 			sendingValue = Message(value.senderID, value.recieverID, value.value);
 			sendingValue.recieveTime = recieveTime + chrono::milliseconds(delay);
+			EnterCriticalSection(&section);
 			msgQ.insert(sendingValue);
+			LeaveCriticalSection(&section);
 		}
 	}
 	return 0;
@@ -193,63 +202,96 @@ HANDLE createSendingThread()
 
 int main()
 {
-	srand(time(0));
-	WSADATA wsa;
-	if (WSAStartup(1, &wsa) != 0)
+  InitializeCriticalSection(&section);
+  srand(time(0));
+  WSADATA wsa;
+  if (WSAStartup(1, &wsa) != 0)
+  {
+	printf("Failed. Error Code : %d", WSAGetLastError());
+	return 1;
+  }
+  MasterSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  maxSocket = MasterSocket;
+  struct sockaddr_in SockAddr;
+  SockAddr.sin_family = AF_INET;
+  SockAddr.sin_port = htons(1337);
+  SockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  bind(MasterSocket, (struct sockaddr *)(&SockAddr), sizeof(SockAddr));
+
+  listen(MasterSocket, SOMAXCONN);
+
+  FD_ZERO(&socketsSet);
+  FD_ZERO(&recievedSet);
+  FD_SET(MasterSocket, &socketsSet);
+
+  HANDLE hRecvThread = createRecievingThread();
+  HANDLE hSendThread = createSendingThread();
+
+  int machinesCount, inputCount, input;
+  Message sendingValue;
+
+
+#ifdef tests
+  ofstream out("out.txt");
+  ifstream in("tests.txt");
+  for (delay = 0; delay <= 100; delay+= 20)
+  {
+	for (percentage = 1; percentage >= 0.5; percentage -= 0.05)
 	{
-		printf("Failed. Error Code : %d", WSAGetLastError());
-		return 1;
-	}
-	MasterSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	maxSocket = MasterSocket;
-	struct sockaddr_in SockAddr;
-	SockAddr.sin_family = AF_INET;
-	SockAddr.sin_port = htons(1337);
-	SockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	bind(MasterSocket, (struct sockaddr *)(&SockAddr), sizeof(SockAddr));
-
-	listen(MasterSocket, SOMAXCONN);
-
-	FD_ZERO(&socketsSet);
-	FD_ZERO(&recievedSet);
-	FD_SET(MasterSocket, &socketsSet);
-
-	HANDLE hRecvThread = createRecievingThread();
-	HANDLE hSendThread = createSendingThread();
-
-	int machinesCount, inputCount, input;
-	Message sendingValue;
-
-	ifstream in("tests.txt");
-	for (int i = 0; i < 100; i++)
-	{
-	  currentID = 0;
-	  sockets.clear();
-	  msgQ.clear();
-	  vector<HANDLE> hProc;
-	  in >> machinesCount;
-	  in >> inputCount;
-	  for(int g = 0; g < machinesCount; g++)
-		hProc.push_back(addNewProcess());
-	  Sleep(500);
-	  for (int value = 1; value <= inputCount; value++)
+	  ifstream in("tests.txt");
+	  success = 0;
+	  for (int i = 0; i < 20; i++)
 	  {
-		in >> input;
-		sendingValue = Message(1000, input, makeMessage(ServerNewValue, 0,0,value));
+		currentID = 0;
+		sockets.clear();
+		msgQ.clear();
+		vector<HANDLE> hProc;
+		in >> machinesCount;
+		in >> inputCount;
+		for (int g = 0; g < machinesCount; g++)
+		{
+		  hProc.push_back(addNewProcess());
+		  Sleep(500);
+		}
+		Sleep(1000);
+		for (int value = 1; value <= inputCount; value++)
+		{
+		  in >> input;
+		  sendingValue = Message(1000, input, makeMessage(ServerNewValue, 0, 0, value));
+		  sendingValue.recieveTime = chrono::system_clock::now();
+		  sendMsg(sendingValue);
+		  Sleep(300);
+		}
+		expectedValue = inputCount;
+		sendingValue = Message(1000, input, makeMessage(ServerRequestValue, 0, 0, 0));
 		sendingValue.recieveTime = chrono::system_clock::now();
 		sendMsg(sendingValue);
-		Sleep(300);
+		while (expectedValue != -1)
+		  Sleep(100);
+		for (auto it = hProc.begin(); it != hProc.end(); it++)
+		  TerminateProcess(*it, 2);
+		hProc.clear();
 	  }
-	  expectedValue = inputCount;
-	  sendingValue = Message(1000, input, makeMessage(ServerRequestValue, 0, 0, 0));
-	  sendingValue.recieveTime = chrono::system_clock::now();
-	  sendMsg(sendingValue);
-	  while (expectedValue != -1)
-		Sleep(100);
-	  for (auto it = hProc.begin(); it != hProc.end(); it++)
-		TerminateProcess(*it, 2);
-	  hProc.clear();
+	  cout << "Percentage: " << percentage << " delay: " << delay << ". Total tests: 20. " << success << " succeded. " << 20 - success << " failed" << endl;
+	  out << ((double)success) / 20 << " ";
+	  in.close();
 	}
-	WaitForSingleObject(hRecvThread, INFINITE);
-	system("pause");
+	out << endl;
+  }
+#else
+
+
+  while (true)
+  {
+	int c = _getch();
+	if (!c)
+	  continue;
+	addNewProcess();
+  }
+#endif // tests
+
+
+  /**/
+  WaitForSingleObject(hRecvThread, INFINITE);
+  system("pause");
 }

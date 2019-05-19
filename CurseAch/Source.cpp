@@ -90,6 +90,9 @@ DWORD WINAPI marker(LPVOID args)
 	  if (promicesRecieved * 2 > nodesCount)
 	  {
 		//cout << "Sending accept " << proposalId << " " << proposalId << " " << currentValue << endl;
+		//for(int i = 0; i < 3; )
+		manager->broadcast(LocalCommunicationManager::makeMessage(Accept, proposalId, proposalId, currentValue));
+		manager->broadcast(LocalCommunicationManager::makeMessage(Accept, proposalId, proposalId, currentValue));
 		manager->broadcast(LocalCommunicationManager::makeMessage(Accept, proposalId, proposalId, currentValue));
 	  }
 	  currentNodeState = acceptor;
@@ -100,7 +103,7 @@ DWORD WINAPI marker(LPVOID args)
 	  recievedValue = parseMessage(recievedMessage.value);
 	  if (recievedValue.type == ServerNewValue)
 	  {
-		changeValue(recievedValue.value);
+		changeValue(currentValue + 1);
 		currentNodeState = proposer;
 		break;
 	  }
