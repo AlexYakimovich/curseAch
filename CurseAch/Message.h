@@ -1,7 +1,7 @@
 #include <chrono>
 #pragma once
 
-enum MessageType {AppendEntry, RequestVote, Vote, NewValue, Error};
+enum MessageType {AppendEntry, RequestVote, Vote, NewValue, ServerNewValue, ServerRequestValue, Error};
 
 class Message
 {

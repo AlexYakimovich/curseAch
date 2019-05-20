@@ -3,8 +3,8 @@
 #include <set>
 #include <Windows.h>
 #define APPEND_TIMEOUT 100
-#define ELECTION_TIMEOUT_MIN 350
-#define ELECTION_TIMEOUT_MAX 700
+#define ELECTION_TIMEOUT_MIN 250
+#define ELECTION_TIMEOUT_MAX 450
 using namespace std;
 enum NodeState { leader, candidate, follower };
 
@@ -59,6 +59,20 @@ DWORD WINAPI marker(LPVOID args)
 	  manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, AppendEntry, currentValue));
 	  recievedMessage = manager->recieveValue(APPEND_TIMEOUT);
 	  recievedValue = parseMessage(recievedMessage.value);
+	  if (recievedValue.type == ServerNewValue)
+	  {
+		cout << "New val from server: " << currentValue + 1 << endl;
+		changeValue(currentValue + 1);
+		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
+		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
+		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
+		break;
+	  }
+	  if (recievedValue.type == ServerRequestValue)
+	  {
+		manager->sendValue(currentValue, 1000);
+		break;
+	  }
 	  if (recievedValue.term > currentTerm)
 	  {
 		currentTerm = recievedValue.term;
@@ -68,7 +82,10 @@ DWORD WINAPI marker(LPVOID args)
 	  }
 	  if (recievedValue.type == NewValue)
 	  {
+		cout << "New val from #" << recievedMessage.senderID <<": " << recievedValue.value << endl;
 		changeValue(recievedValue.value);
+		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
+		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
 		manager->broadcast(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue));
 	  }
 	  break;
@@ -107,6 +124,21 @@ DWORD WINAPI marker(LPVOID args)
 	case follower:
 	  recievedMessage = manager->recieveValue(timeout);
 	  recievedValue = parseMessage(recievedMessage.value);
+	  //cout << recievedValue.type << endl;
+	  if (recievedValue.type == ServerNewValue)
+	  {
+		//cout << "Sending to " << currentLeader << endl;
+		changeValue(currentValue + 1);
+		manager->sendValue(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue), currentLeader);
+		manager->sendValue(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue), currentLeader);
+		manager->sendValue(LocalCommunicationManager::makeMessage(currentTerm, NewValue, currentValue), currentLeader);
+		break;
+	  }
+	  if (recievedValue.type == ServerRequestValue)
+	  {
+		manager->sendValue(currentValue, 1000);
+		break;
+	  }
 	  if (recievedValue.type == Error && recievedValue.value == TIMEOUT_REACHED)
 	  {
 		cout << "candidate" << endl;
