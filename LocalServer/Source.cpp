@@ -35,8 +35,8 @@ long long maxSocket;
 CRITICAL_SECTION section;
 vector <long long> sockets;
 fd_set socketsSet, recievedSet;
-long long delay = 10;
-double percentage = 0.30;
+long long delay = 0;
+double percentage =1;
 
 set<Message> msgQ;
 
@@ -97,6 +97,8 @@ void sendMsg(Message msg)
   if (msg.recieverID == msg.senderID)
 	return;
   //cout << "Sending message to client #" << msg.recieverID << endl;
+  if (sockets.size() <= msg.recieverID)
+	cout << "It's me" << endl;
   send(sockets[msg.recieverID], (char *)&msg, sizeof(Message), 0);
 }
 
@@ -232,10 +234,10 @@ int main()
   Message sendingValue;
 
 
-#ifdef tests
+#ifndef tests
   ofstream out("out.txt");
   ifstream in("tests.txt");
-  for (delay = 0; delay <= 100; delay += 20)
+  for (delay = 100; delay <= 100; delay += 20)
   {
 	for (percentage = 1; percentage >= 0.5; percentage -= 0.05)
 	{
@@ -244,10 +246,10 @@ int main()
 	  for (int i = 0; i < 20; i++)
 	  {
 		currentID = 0;
-		sockets.clear();
 		EnterCriticalSection(&section);
 		msgQ.clear();
 		LeaveCriticalSection(&section);
+		sockets.clear();
 		vector<HANDLE> hProc;
 		in >> machinesCount;
 		in >> inputCount;
